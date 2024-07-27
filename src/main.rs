@@ -5,7 +5,7 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Init { dir, name } => init(dir, name),
+        Commands::Init { dir } => init(dir),
     };
     // the the command succeed
 }

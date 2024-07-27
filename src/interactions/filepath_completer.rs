@@ -1,5 +1,11 @@
 use anyhow::{anyhow, Result};
-use std::io::ErrorKind;
+use std::{
+    ffi::{OsStr, OsString},
+    io::ErrorKind,
+    path::PathBuf,
+};
+
+use normalize_path::NormalizePath;
 
 use inquire::{
     autocompletion::{Autocomplete, Replacement},
@@ -20,7 +26,7 @@ impl<'a> PathPromt<'a> {
             placeholder: None,
             help_message: None,
             formatter: &|s| format!("{s}"),
-            autocompleter: None,
+            autocompleter: Some(Box::new(FilePathCompleter::new(3))),
             validators: vec![],
             page_size: 3,
             render_config: RenderConfig::default(),
@@ -40,7 +46,15 @@ impl<'a> PathPromt<'a> {
 pub struct FilePathCompleter {
     input: String,
     paths: Vec<String>,
-    lcp: String,
+    n_completions: usize,
+}
+impl FilePathCompleter {
+    pub fn new(n_completions: usize) -> Self {
+        Self {
+            n_completions,
+            ..Default::default()
+        }
+    }
 }
 
 impl FilePathCompleter {
@@ -48,81 +62,50 @@ impl FilePathCompleter {
         if input == self.input {
             return Ok(());
         }
-
         self.input = input.to_owned();
         self.paths.clear();
 
-        let input_path = std::path::PathBuf::from(input);
+        let current_dir = std::path::PathBuf::from(".");
+        let empty = std::path::PathBuf::from("");
 
-        let fallback_parent = input_path
-            .parent()
-            .map(|p| {
-                if p.to_string_lossy() == "" {
-                    std::path::PathBuf::from(".")
-                } else {
-                    p.to_owned()
-                }
-            })
-            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let input_path = std::path::PathBuf::from(input).normalize();
 
-        let scan_dir = if input.ends_with('/') {
-            input_path
-        } else {
-            fallback_parent.clone()
+        // from where do we search for completions
+        let (scan_dir, file_name): (PathBuf, OsString) = {
+            if input_path.is_dir() {
+                // the provided directory
+                (input_path, OsString::from(""))
+            } else {
+                // the parent directory or current directory is there is none
+                let parent = input_path
+                    .parent()
+                    .map(|p| p.to_owned())
+                    .filter(|p| p != &empty)
+                    .unwrap_or(current_dir);
+                let file_name = input_path
+                    .file_name()
+                    .map(ToOwned::to_owned)
+                    .unwrap_or(OsString::from(""));
+                (parent, file_name)
+            }
         };
 
-        let entries = match std::fs::read_dir(scan_dir) {
-            Ok(read_dir) => Ok(read_dir),
-            Err(err) if err.kind() == ErrorKind::NotFound => std::fs::read_dir(fallback_parent),
-            Err(err) => Err(err),
-        }?
-        .collect::<Result<Vec<_>, _>>()?;
+        // we retrieve all the directories in scan_dir
+        // that begin with input_path
+        if let Ok(dirs) = scan_dir.read_dir() {
+            let entries: Vec<String> = dirs
+                .filter_map(|e| e.ok()) // the entries that we are allowed to read
+                .filter(|e| e.path().is_dir()) // the entries that are directories
+                .filter(|e| e.file_name().ge(&file_name))
+                // .filter_map(|e| std::fs::canonicalize(e.path()).ok())
+                .filter_map(|e| e.path().to_str().map(ToOwned::to_owned))
+                .take(self.n_completions)
+                .collect();
 
-        let mut idx = 0;
-        let limit = 15;
-
-        while idx < entries.len() && self.paths.len() < limit {
-            let entry = entries.get(idx).unwrap();
-
-            let path = entry.path();
-            let path_str = if path.is_dir() {
-                format!("{}/", path.to_string_lossy())
-            } else {
-                path.to_string_lossy().to_string()
-            };
-
-            if path_str.starts_with(&self.input) && path_str.len() != self.input.len() {
-                self.paths.push(path_str);
-            }
-
-            idx = idx.saturating_add(1);
+            self.paths = entries;
         }
-
-        self.lcp = self.longest_common_prefix();
 
         Ok(())
-    }
-
-    fn longest_common_prefix(&self) -> String {
-        let mut ret: String = String::new();
-
-        let mut sorted = self.paths.clone();
-        sorted.sort();
-        if sorted.is_empty() {
-            return ret;
-        }
-
-        let mut first_word = sorted.first().unwrap().chars();
-        let mut last_word = sorted.last().unwrap().chars();
-
-        loop {
-            match (first_word.next(), last_word.next()) {
-                (Some(c1), Some(c2)) if c1 == c2 => {
-                    ret.push(c1);
-                }
-                _ => return ret,
-            }
-        }
     }
 }
 
@@ -142,10 +125,7 @@ impl Autocomplete for FilePathCompleter {
 
         Ok(match highlighted_suggestion {
             Some(suggestion) => Replacement::Some(suggestion),
-            None => match self.lcp.is_empty() {
-                true => Replacement::None,
-                false => Replacement::Some(self.lcp.clone()),
-            },
+            None => Replacement::None,
         })
     }
 }

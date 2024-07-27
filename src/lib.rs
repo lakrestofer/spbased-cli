@@ -16,34 +16,26 @@ pub struct Cli {
 
 pub struct Config {
     pub dir: PathBuf,
-    pub name: String,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Init {
-        dir: Option<PathBuf>,
-        name: Option<String>,
-    },
+    Init { dir: Option<PathBuf> },
 }
 
-pub fn init(dir: Option<PathBuf>, name: Option<String>) {
+pub fn init(dir: Option<PathBuf>) {
     // retrieve or ask for path and name
-    let dir = dir.or_else(|| interactions::promt_path());
-    let name = name.or_else(|| interactions::promt_name());
-    if dir.is_none() || name.is_none() {
+    let dir =
+        dir.or_else(|| interactions::promt_path("Path to direction where spbased will init: "));
+    if dir.is_none() {
         return;
     };
     let dir = dir.unwrap();
-    let name = name.unwrap();
     // let name = name.unwrap_or_else(|| interactions::promt_name());
-    let config = Config {
-        dir,
-        name: "something".into(),
-    };
+    let config = Config { dir };
 
     // confirm choice
-    if !interactions::confirm(&config) {
+    if !interactions::confirm(&config).unwrap_or(false) {
         return;
     };
 }
