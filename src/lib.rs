@@ -1,7 +1,9 @@
 use std::path::PathBuf;
-pub mod interactions;
 
 use clap::{Parser, Subcommand};
+
+use anyhow::{anyhow, Context, Result};
+use dialoguer::Confirm;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -15,27 +17,38 @@ pub struct Cli {
 }
 
 pub struct Config {
-    pub dir: PathBuf,
+    pub directory: PathBuf,
 }
 
 #[derive(Subcommand)]
 pub enum Commands {
-    Init { dir: Option<PathBuf> },
+    Init { directory: PathBuf },
 }
 
-pub fn init(dir: Option<PathBuf>) {
-    // retrieve or ask for path and name
-    let dir =
-        dir.or_else(|| interactions::promt_path("Path to direction where spbased will init: "));
-    if dir.is_none() {
-        return;
-    };
-    let dir = dir.unwrap();
-    // let name = name.unwrap_or_else(|| interactions::promt_name());
-    let config = Config { dir };
+pub fn init(directory: PathBuf) -> Result<()> {
+    let full_path =
+        std::fs::canonicalize(&directory).context("Trying to retrieve the canonical path")?;
 
-    // confirm choice
-    if !interactions::confirm(&config).unwrap_or(false) {
-        return;
-    };
+    let res = Confirm::new()
+        .with_prompt(format!(
+            "Are you sure that you want to init spbased here: {:?}",
+            full_path
+        ))
+        .interact()
+        .context("tried to retrieve an answer from the user")?;
+
+    if !res {
+        return Err(anyhow!("User aborted init!"));
+    }
+
+    let spbased_dir = full_path.join(".spbased");
+
+    // if an file with the path we want to use already exists, then exist
+    if spbased_dir.is_file() {
+        return Err(anyhow!("File with path {:?} already exists", spbased_dir));
+    }
+
+    let config = Config { directory };
+
+    Ok(())
 }
