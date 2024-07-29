@@ -15,12 +15,14 @@ anyhow = "1.0.86"
 dialoguer = "0.11.0"
 include_dir = "0.7.4"
 time = { version = "0.3.36", features = ["parsing", "formatting", "macros"]}
-
+resolve-path = "0.1.0"
+normalize-path = "0.2.1"
 
 [package]
 name = "spbased-cli"
 version = "0.1.0"
 edition = "2021"
+build = "build.rs"
 
 [dependencies]
 clap = { workspace = true }
@@ -32,3 +34,5 @@ serde = { workspace = true }
 anyhow = { workspace = true }
 dialoguer = { workspace = true }
 include_dir = { workspace = true }
+resolve-path = { workspace = true }
+normalize-path = { workspace = true }

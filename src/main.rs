@@ -1,6 +1,8 @@
 use anyhow::Result;
 use clap::Parser;
-use spbased_cli::{init, Cli, Commands};
+use spbased_cli::{Cli, Commands};
+
+use spbased_cli::commands::*;
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
